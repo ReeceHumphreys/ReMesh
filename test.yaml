@@ -1,0 +1,35 @@
+model:
+  input_stl: "../IXV/models/Coarse/lf_0_rf_0-fixed-normals.stl"
+  transformations:
+    rotate: [0, 0, 90]
+    flip_axes:
+      x: true
+      y: true
+      z: false
+    desired_dimensions:
+      length: 5.0
+      width: null
+      height: null
+      keep_aspect_ratio: true
+    translate: [2.7311045136690755, -1.672319200400861e-16, 0.05241801101675799]
+
+regions:
+  # --- subdivide example  ---
+  - name: nose
+    bounds:
+      x: [-0.5, 0.5]
+      y: [-0.5, 0.5]
+      z: [-0.5, 0.5]
+    operation: subdivide
+    max_edge_length: 0.05
+    use_spherical_interp: true
+    curvature_center: [0.0074, 0.0747, 0.0318]
+
+  # --- combine example ---
+  - name: midsection
+    bounds:
+      x: [-1.0, 1.0]
+      y: [-0.5, 0.5]
+      z: [0.0, 1.0]
+    operation: combine
+    reduction_ratio: 0.5
