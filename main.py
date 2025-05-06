@@ -1,14 +1,9 @@
 import argparse
 import yaml
-from transform import apply_transformations
 import trimesh
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-
-
-def load_mesh(path):
-    return trimesh.load_mesh(path, process=False)
 
 
 def triangle_centroid(tri):
@@ -186,20 +181,21 @@ def show_before_after_colored(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("config", help="Path to refinement config YAML")
+    parser.add_argument("stl", help="Path to the input STL file")
+    parser.add_argument("config", help="Path to the regions config YAML")
     parser.add_argument("--out", default="refined.stl", help="Output STL path")
     parser.add_argument(
         "--debug", action="store_true", help="Show region debug visuals"
     )
     args = parser.parse_args()
 
+    # Load the mesh directly
+    mesh = trimesh.load_mesh(args.stl, process=False)
+
+    # Load regions from the YAML config
     with open(args.config, "r") as file:
-        config = yaml.safe_load(file)
+        regions = yaml.safe_load(file).get("regions", [])
 
-    mesh = load_mesh(config["model"]["input_stl"])
-    mesh = apply_transformations(mesh, config["model"]["transformations"])
-
-    regions = config.get("regions", [])
     if not regions:
         print("No regions defined for refinement.")
         return

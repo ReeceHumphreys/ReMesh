@@ -1,20 +1,5 @@
-model:
-  input_stl: "../IXV/models/Coarse/lf_0_rf_0-fixed-normals.stl"
-  transformations:
-    rotate: [0, 0, 90]
-    flip_axes:
-      x: true
-      y: true
-      z: false
-    desired_dimensions:
-      length: 5.0
-      width: null
-      height: null
-      keep_aspect_ratio: true
-    translate: [2.7311045136690755, -1.672319200400861e-16, 0.05241801101675799]
-
 regions:
-  # --- subdivide example  ---
+  # --- subdivide example ---
   - name: nose
     bounds:
       x: [-0.5, 0.5]
