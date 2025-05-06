@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
 import argparse
-import yaml
-import trimesh
-import numpy as np
+import logging
 from pathlib import Path
+from typing import List
+from regions import Region, load_regions
+import numpy as np
+import trimesh
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from typing import List, Dict, Tuple, Optional, Any
-
-
-def triangle_centroid(tri: np.ndarray) -> np.ndarray:
-    """Return centroid of a 3×3 array of triangle vertices."""
-    return tri.mean(axis=0)
 
 
 def triangle_edge_lengths(tri: np.ndarray) -> List[float]:
@@ -21,68 +17,7 @@ def triangle_edge_lengths(tri: np.ndarray) -> List[float]:
 
 def needs_subdivision(tri: np.ndarray, max_len: float) -> bool:
     """True if any edge of `tri` exceeds `max_len`."""
-    return any(length > max_len for length in triangle_edge_lengths(tri))
-
-
-def in_bounds(point: np.ndarray, bounds: Dict[str, Tuple[float, float]]) -> bool:
-    """Check if point lies within the axis-aligned box `bounds`."""
-    x, y, z = point
-    bx, by, bz = bounds["x"], bounds["y"], bounds["z"]
-    return bx[0] <= x <= bx[1] and by[0] <= y <= by[1] and bz[0] <= z <= bz[1]
-
-
-def tag_triangles_by_region(
-    mesh: trimesh.Trimesh, regions: List[Dict[str, Any]]
-) -> List[Tuple[int, Dict[str, Any]]]:
-    """Return list of (face_index, region) for faces whose centroid lies in any region."""
-    tags = []
-    for idx, face in enumerate(mesh.faces):
-        cent = triangle_centroid(mesh.vertices[face])
-        for region in regions:
-            if in_bounds(cent, region["bounds"]):
-                tags.append((idx, region))
-                break
-    return tags
-
-
-def midpoint(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """Return midpoint of two points."""
-    return (a + b) / 2
-
-
-def project_to_sphere(p: np.ndarray, center: np.ndarray) -> np.ndarray:
-    """Project point p outward radially from center onto sphere of radius |p-center|."""
-    v = p - center
-    return center + v / np.linalg.norm(v) * np.linalg.norm(v)
-
-
-def subdivide_triangle(
-    verts: np.ndarray, face: np.ndarray, curvature_center: Optional[np.ndarray] = None
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Split one face into 4 smaller ones.
-    Optionally project new points onto a sphere around curvature_center.
-    """
-    v0, v1, v2 = verts[face]
-    a, b, c = midpoint(v0, v1), midpoint(v1, v2), midpoint(v2, v0)
-
-    if curvature_center is not None:
-        a, b, c = (project_to_sphere(pt, curvature_center) for pt in (a, b, c))
-
-    start = len(verts)
-    new_verts = np.vstack([verts, a, b, c])
-    ia, ib, ic = start, start + 1, start + 2
-    i0, i1, i2 = face
-
-    new_faces = np.array(
-        [
-            [i0, ia, ic],
-            [ia, i1, ib],
-            [ib, i2, ic],
-            [ia, ib, ic],
-        ]
-    )
-    return new_verts, new_faces
+    return any(l > max_len for l in triangle_edge_lengths(tri))
 
 
 def combine_faces(
@@ -97,117 +32,171 @@ def combine_faces(
     return sub.simplify_quadratic_decimation(target)
 
 
-def refine_mesh(
-    mesh: trimesh.Trimesh, tags: List[Tuple[int, Dict[str, Any]]]
+def rebuild_mesh(
+    old: trimesh.Trimesh, verts: np.ndarray, faces: np.ndarray
 ) -> trimesh.Trimesh:
-    """Apply per-region subdivision or decimation, return new Trimesh."""
-    verts = mesh.vertices.copy()
-    new_faces = []
-    processed = set()
+    """Construct a new Trimesh with process=False to preserve metadata."""
+    return trimesh.Trimesh(vertices=verts, faces=faces, process=False)
 
-    # Group face indices by region
-    groups: Dict[str, Dict[str, Any]] = {}
-    for idx, region in tags:
-        key = region["name"]
-        groups.setdefault(key, {"region": region, "faces": []})["faces"].append(idx)
 
-    for data in groups.values():
-        region, face_ids = data["region"], data["faces"]
-        op = region.get("operation", "subdivide")
+def get_region_faces(mesh: trimesh.Trimesh, region: Region) -> np.ndarray:
+    """
+    Return array of face indices whose centroid lies within region.bounds,
+    computed in a fully vectorized manner.
+    """
+    # shape (F,3,3) → (F,3,3)
+    face_verts = mesh.vertices[mesh.faces]
+    # compute centroids shape (F,3)
+    cents = face_verts.mean(axis=1)
 
+    bx, by, bz = region.bounds.x, region.bounds.y, region.bounds.z
+    mask = (
+        (cents[:, 0] >= bx[0])
+        & (cents[:, 0] <= bx[1])
+        & (cents[:, 1] >= by[0])
+        & (cents[:, 1] <= by[1])
+        & (cents[:, 2] >= bz[0])
+        & (cents[:, 2] <= bz[1])
+    )
+    return np.nonzero(mask)[0]
+
+
+def process_region(mesh: trimesh.Trimesh, region: Region) -> trimesh.Trimesh:
+    # Set up logger and initial parameters
+    name, op, passes = region.name, region.operation, region.passes
+    logger = logging.getLogger(name)
+    logger.info(f"Plan: {passes or '∞'} passes, operation={op}")
+
+    refined = mesh
+    itr = 0
+
+    # Loop until completion or stable mesh
+    while True:
+        itr += 1
+        # Identify faces within the region bounds for this iteration
+        fids = get_region_faces(refined, region)
+        if len(fids) == 0:
+            logger.info("no faces in region; stopping early")
+            break
+
+        verts, faces_out = refined.vertices.copy(), []
+        used = set()
+
+        # Process subdivision operation
         if op == "subdivide":
-            for fid in face_ids:
-                tri = verts[mesh.faces[fid]]
-                if needs_subdivision(tri, region["max_edge_length"]):
-                    center = (
-                        np.array(region["curvature_center"])
-                        if region.get("use_spherical_interp")
-                        else None
+            center = (
+                np.array(region.curvature_center)
+                if region.use_spherical_interp
+                else None
+            )
+            for fid in fids:
+                tri = verts[refined.faces[fid]]
+                if needs_subdivision(tri, region.max_edge_length):
+                    # Compute midpoints of the triangle edges
+                    a, b, c = (
+                        (tri[0] + tri[1]) / 2,
+                        (tri[1] + tri[2]) / 2,
+                        (tri[2] + tri[0]) / 2,
                     )
-                    verts, faces4 = subdivide_triangle(verts, mesh.faces[fid], center)
-                    new_faces.extend(faces4)
+                    # If spherical interpolation is enabled, project midpoints onto the sphere
+                    if center is not None:
+                        # project midpoints to sphere
+                        for pt in (a, b, c):
+                            pt[:] = center + (pt - center) / np.linalg.norm(
+                                pt - center
+                            ) * np.linalg.norm(pt - center)
+                    start = len(verts)
+                    verts = np.vstack([verts, a, b, c])
+                    ia, ib, ic = start, start + 1, start + 2
+                    i0, i1, i2 = refined.faces[fid]
+                    new_quads = np.array(
+                        [[i0, ia, ic], [ia, i1, ib], [ib, i2, ic], [ia, ib, ic]]
+                    )
+                    faces_out.extend(new_quads)
                 else:
-                    new_faces.append(mesh.faces[fid])
-                processed.add(fid)
+                    faces_out.append(refined.faces[fid])
+                used.add(fid)
 
+        # Process combine (decimation) operation
         elif op == "combine":
-            simp = combine_faces(mesh, face_ids, region["reduction_ratio"])
+            simp = combine_faces(refined, list(fids), region.reduction_ratio)
+            kept_mask = np.ones(len(refined.faces), bool)
+            kept_mask[fids] = False
+            kept = refined.faces[kept_mask]
             offset = len(verts)
             verts = np.vstack([verts, simp.vertices])
-            new_faces.extend(simp.faces + offset)
-            processed.update(face_ids)
+            faces_out = list(kept) + [f + offset for f in simp.faces]
+            used.update(fids)
 
-        else:  # no-op
-            for fid in face_ids:
-                new_faces.append(mesh.faces[fid])
-                processed.add(fid)
+        # Merge refined faces with untouched faces
+        # carry over untouched faces
+        for i, face in enumerate(refined.faces):
+            if i not in used:
+                faces_out.append(face)
 
-    # add untouched faces
-    for idx, face in enumerate(mesh.faces):
-        if idx not in processed:
-            new_faces.append(face)
+        # Rebuild the mesh with updated vertices and faces
+        refined = rebuild_mesh(refined, verts, np.array(faces_out))
+        logger.info(f"completed iteration {itr}")
 
-    return trimesh.Trimesh(vertices=verts, faces=np.array(new_faces), process=False)
+        # Check whether we've reached the required number of passes or stable state
+        # stopping criteria
+        if passes > 0 and itr >= passes:
+            logger.info(f"reached {passes} passes; done")
+            break
 
+        if passes == 0:
+            new_fids = get_region_faces(refined, region)
+            if set(new_fids) == set(fids):
+                logger.info(f"stable at iteration {itr}; done")
+                break
 
-def show_before_after(
-    before: trimesh.Trimesh,
-    after: trimesh.Trimesh,
-    tags_before: List[Tuple[int, Dict[str, Any]]],
-    tags_after: List[Tuple[int, Dict[str, Any]]],
-    title: str = "Mesh Refinement",
-) -> None:
-    """Visualize regions in different colors before/after refinement."""
-    fig = plt.figure(figsize=(12, 6))
-    axes = [fig.add_subplot(1, 2, i + 1, projection="3d") for i in range(2)]
-    for ax, mesh, tags, t in zip(
-        axes, (before, after), (tags_before, tags_after), ("Before", "After")
-    ):
-        ax.set_title(t)
-        # collect faces per region
-        faces_per = {}
-        for fid, region in tags:
-            faces_per.setdefault(region["name"], []).append(mesh.faces[fid])
-        # plot each region
-        for name, faces in faces_per.items():
-            verts = mesh.vertices[np.array(faces)]
-            poly = Poly3DCollection(
-                verts, facecolor=np.random.rand(3), edgecolor="k", alpha=0.6
-            )
-            ax.add_collection3d(poly)
-        ax.auto_scale_xyz(*mesh.vertices.T)
-    plt.suptitle(title)
-    plt.tight_layout()
-    plt.show()
+    return refined
 
 
-def parse_cli() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Region-based mesh refinement")
-    p.add_argument("stl", type=Path, help="input STL path")
-    p.add_argument("config", type=Path, help="regions YAML config")
-    p.add_argument("--out", type=Path, default=Path("refined.stl"), help="output STL")
-    p.add_argument("--debug", action="store_true", help="show before/after plot")
+def parse_cli():
+    p = argparse.ArgumentParser("Region-based mesh refinement")
+    p.add_argument("stl", type=Path, help="input STL file")
+    p.add_argument("config", type=Path, help="YAML region config")
+    p.add_argument("--out", type=Path, default=Path("refined.stl"))
+    p.add_argument("--debug", action="store_true", help="enable debug plots")
     return p.parse_args()
 
 
 def main():
     args = parse_cli()
+    logging.basicConfig(
+        level=logging.INFO, format="%(name)s %(levelname)s: %(message)s"
+    )
     mesh = trimesh.load_mesh(args.stl, process=False)
-    cfg = yaml.safe_load(args.config.read_text())
-    regions = cfg.get("regions", [])
-    if not regions:
-        print("No regions defined; exiting.")
-        return
 
-    tags_b = tag_triangles_by_region(mesh, regions)
-    refined = refine_mesh(mesh, tags_b)
+    regions = load_regions(args.config)
+    refined = mesh.copy()
+
+    for reg in regions:
+        refined = process_region(refined, reg)
 
     if args.debug:
-        tags_a = tag_triangles_by_region(refined, regions)
-        show_before_after(mesh, refined, tags_b, tags_a)
+        before_tags = [(i, r) for r in regions for i in get_region_faces(mesh, r)]
+        after_tags = [(i, r) for r in regions for i in get_region_faces(refined, r)]
+
+        fig, axes = plt.subplots(1, 2, subplot_kw={"projection": "3d"}, figsize=(12, 6))
+        for ax, m, tags, title in zip(
+            axes, (mesh, refined), (before_tags, after_tags), ("Before", "After")
+        ):
+            ax.set_title(title)
+            per = {}
+            for fid, r in tags:
+                per.setdefault(r.name, []).append(m.faces[fid])
+            for name, fs in per.items():
+                verts = m.vertices[np.array(fs)]
+                poly = Poly3DCollection(verts, alpha=0.6, edgecolor="k")
+                ax.add_collection3d(poly)
+            ax.auto_scale_xyz(*m.vertices.T)
+        plt.tight_layout()
+        plt.show()
 
     refined.export(str(args.out))
-    print(f"Refined mesh saved to {args.out}")
+    logging.getLogger("main").info(f"exported refined mesh to {args.out!r}")
 
 
 if __name__ == "__main__":

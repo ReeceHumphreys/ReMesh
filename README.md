@@ -50,6 +50,8 @@ poetry run python main.py ../IXV/models/Coarse/lf_0_rf_0-fixed-normals.stl test.
 
 The YAML configuration file defines the regions for refinement. Each region specifies the bounds and the operation to perform (e.g., subdivision or combination).
 
+Each region can specify a `passes` value (0 = until stable, default is 1).
+
 ```yaml
 regions:
   - name: <region_name>
@@ -61,6 +63,7 @@ regions:
     max_edge_length: <float>
     use_spherical_interp: true
     curvature_center: [x, y, z]
+    passes: <int>
 
   - name: <other_region>
     bounds:
@@ -68,9 +71,14 @@ regions:
       y: [min, max]
       z: [min, max]
     operation: combine
+    passes: <int>
     reduction_ratio: <float between 0 and 1>
 ```
+
+- If the `passes` field is omitted, it defaults to 1. *
 
 ## Output
 
 The refined mesh is saved to the specified output STL file. If `--debug` is enabled, a visualization of the mesh before and after refinement is displayed.
+
+Logs are emitted via Python's logging module. Verbosity can be adjusted by setting the `--debug` flag or the environment variable `LOGLEVEL`.
