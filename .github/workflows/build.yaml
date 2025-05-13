@@ -1,0 +1,53 @@
+name: Build Binaries
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [created]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            ext: ""
+          - os: windows-latest
+            ext: ".exe"
+          - os: macos-latest
+            ext: ""
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install Poetry
+        uses: abatilo/actions-poetry@v2
+        with:
+          poetry-version: "1.8.2"
+
+      - name: Install dependencies
+        run: |
+          poetry config virtualenvs.in-project true
+          poetry install --with dev
+
+      - name: Build executable with PyInstaller
+        run: |
+          poetry run pyinstaller main.py \
+              --onefile \
+              --name remesh \
+              --exclude-module matplotlib \
+              --exclude-module mpl_toolkits
+          mv dist/remesh dist/remesh-${{ runner.os }}${{ matrix.ext }}
+
+      - name: Upload release asset
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/remesh-${{ runner.os }}${{ matrix.ext }}
