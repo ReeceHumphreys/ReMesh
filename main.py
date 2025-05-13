@@ -2,12 +2,12 @@
 import argparse
 import logging
 from pathlib import Path
+import sys
 from typing import List
 from regions import Region, load_regions
 import numpy as np
 import trimesh
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+import logging
 
 
 def triangle_edge_lengths(tri: np.ndarray) -> List[float]:
@@ -164,9 +164,19 @@ def parse_cli():
 
 def main():
     args = parse_cli()
+    logging.getLogger("matplotlib").setLevel(logging.WARNING)
+    err_handler = logging.StreamHandler(sys.stderr)
+    err_handler.setLevel(logging.WARNING)
+
+    out_handler = logging.StreamHandler(sys.stdout)
+    out_handler.setLevel(logging.INFO)
+
     logging.basicConfig(
-        level=logging.INFO, format="%(name)s %(levelname)s: %(message)s"
+        level=logging.INFO,
+        format="%(name)s %(levelname)s: %(message)s",
+        handlers=[out_handler, err_handler],
     )
+
     mesh = trimesh.load_mesh(args.stl, process=False)
 
     regions = load_regions(args.config)
@@ -176,6 +186,9 @@ def main():
         refined = process_region(refined, reg)
 
     if args.debug:
+        import matplotlib.pyplot as plt
+        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
         before_tags = [(i, r) for r in regions for i in get_region_faces(mesh, r)]
         after_tags = [(i, r) for r in regions for i in get_region_faces(refined, r)]
 
@@ -194,6 +207,11 @@ def main():
             ax.auto_scale_xyz(*m.vertices.T)
         plt.tight_layout()
         plt.show()
+
+    print(
+        f"[STATS] faces_in={len(mesh.faces)} faces_out={len(refined.faces)}", flush=True
+    )
+    print(f"[STATUS] completed refinement: output={args.out}", flush=True)
 
     refined.export(str(args.out))
     logging.getLogger("main").info(f"exported refined mesh to {args.out!r}")

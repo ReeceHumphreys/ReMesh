@@ -14,6 +14,9 @@ dependencies = [
     "matplotlib (>=3.10.1,<4.0.0)"
 ]
 
+[tool.poetry.dev-dependencies]
+pyinstaller = { version = "^6.13.0", python = "<3.14" }
+
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

@@ -5,7 +5,7 @@ from typing import List, Tuple, Optional
 
 
 @dataclass
-class __Bounds:
+class Bounds:
     """
     Axis-aligned bounding box defined by min/max for x, y, and z.
 
@@ -46,7 +46,7 @@ class Region:
     """
 
     name: str
-    bounds: __Bounds
+    bounds: Bounds
     operation: str = "subdivide"  # 'subdivide' or 'combine'
     passes: int = 1  # 0 = until stable
     max_edge_length: Optional[float] = None
@@ -97,7 +97,7 @@ def load_regions(config_path: Path) -> List[Region]:
         regions.append(
             Region(
                 name=entry["name"],
-                bounds=__Bounds(**entry["bounds"]),
+                bounds=Bounds(**entry["bounds"]),
                 operation=entry.get("operation", "subdivide"),
                 passes=entry.get("passes", 1),
                 max_edge_length=entry.get("max_edge_length"),
