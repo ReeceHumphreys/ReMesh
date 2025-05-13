@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   build-artifacts:
-    uses: ./.github/workflows/build.yml
+    uses: ./.github/workflows/build.yaml
     with:
       ref: ${{ github.event.release.tag_name }}
 
