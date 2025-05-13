@@ -34,11 +34,13 @@ jobs:
           virtualenvs-in-project: true
 
       - name: Install dependencies
+        shell: bash
         run: |
           poetry config virtualenvs.in-project true
           poetry install --with dev
 
       - name: Build executable with PyInstaller
+        shell: bash
         run: |
           poetry run pyinstaller main.py \
               --onefile \
@@ -46,6 +48,11 @@ jobs:
               --exclude-module matplotlib \
               --exclude-module mpl_toolkits
           mv dist/remesh dist/remesh-${{ runner.os }}${{ matrix.ext }}
+
+      - name: Clean up venv
+        if: always()
+        shell: bash
+        run: rm -rf .venv
 
       - name: Upload release asset
         if: github.event_name == 'release'
