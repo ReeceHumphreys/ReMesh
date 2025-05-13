@@ -32,11 +32,13 @@ jobs:
           virtualenvs-in-project: true
 
       - name: Install dependencies
+        shell: bash
         run: |
           poetry config virtualenvs.in-project true
           poetry install --with dev
 
       - name: Build with PyInstaller
+        shell: bash
         run: |
           poetry run pyinstaller main.py \
             --onefile \
@@ -45,6 +47,7 @@ jobs:
             --exclude-module mpl_toolkits
 
       - name: Rename for extension
+        shell: bash
         if: matrix.ext != ''
         run: |
           mv dist/remesh-${{ matrix.os }} dist/remesh-${{ matrix.os }}${{ matrix.ext }}
