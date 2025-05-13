@@ -1,0 +1,39 @@
+name: Publish Release
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4 # only needed if you reference code; can even be omitted
+
+      - name: Download linux artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: remesh-ubuntu-latest
+          path: dist/
+
+      - name: Download windows artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: remesh-windows-latest
+          path: dist/
+
+      - name: Download mac artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: remesh-macos-latest
+          path: dist/
+
+      - name: Attach binaries to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/remesh-ubuntu-latest
+            dist/remesh-windows-latest.exe
+            dist/remesh-macos-latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
