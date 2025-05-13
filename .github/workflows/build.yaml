@@ -3,22 +3,28 @@ name: Build
 on:
   push:
     branches: [main]
-
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to build (branch or tag)
+        required: false
+        default: ${{ github.ref }}
+        type: string
 jobs:
   build:
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         include:
           - os: ubuntu-latest
-            ext: ""
           - os: windows-latest
-            ext: ".exe"
           - os: macos-latest
-            ext: ""
       max-parallel: 1
-    runs-on: ${{ matrix.os }}
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -41,10 +47,10 @@ jobs:
         shell: bash
         run: |
           poetry run pyinstaller main.py \
-          --onefile \
-          --name remesh-${{ matrix.os }} \
-          --exclude-module matplotlib \
-          --exclude-module mpl_toolkits
+            --onefile \
+            --name remesh-${{ matrix.os }} \
+            --exclude-module matplotlib \
+            --exclude-module mpl_toolkits
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4

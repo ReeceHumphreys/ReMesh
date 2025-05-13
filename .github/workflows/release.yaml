@@ -1,24 +1,25 @@
-# .github/workflows/publish.yml
-name: Publish Release
+name: Build & Publish Release
 
 on:
-  workflow_run:
-    workflows: ["Build"]
-    types: [completed]
+  release:
+    types: [created]
 
 jobs:
+  build-artifacts:
+    uses: ./.github/workflows/build.yaml
+    with:
+      ref: ${{ github.event.release.tag_name }}
+
   publish:
-    if: >
-      github.event.workflow_run.conclusion == 'success' &&
-      contains(github.event.workflow_run.head_commit.message, 'Release')
+    needs: build-artifacts
     runs-on: ubuntu-latest
     steps:
-      - name: Download all artifacts from Build
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist/
 
-      - name: Attach binaries to release
+      - name: Attach binaries to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
