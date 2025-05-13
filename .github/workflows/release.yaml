@@ -8,55 +8,13 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-          - os: windows-latest
-          - os: macos-latest
-      max-parallel: 1
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-
-      - name: Install Poetry & deps
-        uses: snok/install-poetry@v1
-        with:
-          version: latest
-          virtualenvs-in-project: true
-
-      - name: Install dependencies
-        shell: bash
-        run: |
-          source $HOME/.poetry/env
-          poetry config virtualenvs.in-project true
-          poetry install --with dev
-
-      - name: Build with PyInstaller
-        shell: bash
-        run: |
-          source $HOME/.poetry/env
-          poetry run pyinstaller main.py \
-            --onefile \
-            --name remesh-${{ matrix.os }} \
-            --exclude-module matplotlib \
-            --exclude-module mpl_toolkits
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: remesh-${{ matrix.os }}
-          path: dist/remesh-${{ matrix.os }}*
+  build-artifacts:
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ github.event.release.tag_name }}
 
   publish:
-    needs: build
+    needs: build-artifacts
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -64,7 +22,7 @@ jobs:
         with:
           path: dist/
 
-      - name: Gather binaries into one folder
+      - name: Flatten artifacts
         run: |
           mkdir -p flat
           for d in dist/*; do
