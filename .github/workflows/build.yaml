@@ -37,14 +37,14 @@ jobs:
           poetry config virtualenvs.in-project true
           poetry install --with dev
 
-      - name: Build with PyInstaller
+      - name: Build executable with PyInstaller
         shell: bash
         run: |
           poetry run pyinstaller main.py \
-            --onefile \
-            --name remesh-${{ matrix.os }} \
-            --exclude-module matplotlib \
-            --exclude-module mpl_toolkits
+          --onefile \
+          --name remesh-${{ matrix.os }} \
+          --exclude-module matplotlib \
+          --exclude-module mpl_toolkits
 
       - name: Rename for extension
         shell: bash
@@ -55,5 +55,5 @@ jobs:
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: remesh-${{ matrix.os }}${{ matrix.ext }}
-          path: dist/remesh-${{ matrix.os }}${{ matrix.ext }}
+          name: remesh-${{ matrix.os }}
+          path: dist/remesh-${{ matrix.os }}*
