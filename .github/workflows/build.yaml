@@ -8,8 +8,13 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        ext: ["", ".exe", ""]
+        include:
+          - os: ubuntu-latest
+            ext: ""
+          - os: windows-latest
+            ext: ".exe"
+          - os: macos-latest
+            ext: ""
       max-parallel: 1
     runs-on: ${{ matrix.os }}
     steps:
