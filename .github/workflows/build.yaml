@@ -10,6 +10,7 @@ on:
         required: false
         default: ${{ github.ref }}
         type: string
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -17,8 +18,14 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            ext: ""
           - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            ext: ".exe"
           - os: macos-latest
+            target: aarch64-apple-darwin
+            ext: ""
       max-parallel: 1
 
     steps:
@@ -48,12 +55,12 @@ jobs:
         run: |
           poetry run pyinstaller main.py \
             --onefile \
-            --name remesh-${{ matrix.os }} \
+            --name remesh-${{ matrix.target }} \
             --exclude-module matplotlib \
             --exclude-module mpl_toolkits
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: remesh-${{ matrix.os }}
-          path: dist/remesh-${{ matrix.os }}*
+          name: remesh-${{ matrix.target }}
+          path: dist/remesh-${{ matrix.target }}${{ matrix.ext }}
