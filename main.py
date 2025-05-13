@@ -186,8 +186,13 @@ def main():
         refined = process_region(refined, reg)
 
     if args.debug:
-        import matplotlib.pyplot as plt
-        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+        try:
+            import matplotlib.pyplot as plt
+            from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+        except ImportError:
+            sys.exit(
+                "Matplotlib is required for --debug mode. Reinstall or run without --debug."
+            )
 
         before_tags = [(i, r) for r in regions for i in get_region_faces(mesh, r)]
         after_tags = [(i, r) for r in regions for i in get_region_faces(refined, r)]
